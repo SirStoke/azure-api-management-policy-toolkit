@@ -21,6 +21,60 @@ var config = new ConfigurationBuilder()
     .Build();
 var options = new CompilerOptions(config);
 
+// START - New XML Formatting Mode
+// Note: Ensure CompilerOptions is updated to parse "format-input-file" and "format-output-file" arguments.
+// e.g., public string? FormatInputFile { get; } and public string? FormatOutputFile { get; }
+if (!string.IsNullOrEmpty(options.FormatInputFile)) // Assumes 'FormatInputFile' property exists in CompilerOptions
+{
+    if (!File.Exists(options.FormatInputFile))
+    {
+        Console.Error.WriteLine($"Error: Input XML file not found: {options.FormatInputFile}");
+        return 1; // Indicate error
+    }
+
+    Console.Out.WriteLine($"Processing XML file for formatting: '{options.FormatInputFile}'");
+    var xmlInputContent = File.ReadAllText(options.FormatInputFile);
+    var xmlOutputContent = xmlInputContent;
+
+    if (options.Format) // Uses the existing 'Format' boolean option from CompilerOptions
+    {
+        Console.Out.WriteLine("Applying formatting to XML content...");
+        var contentToFormat = xmlInputContent;
+
+        // Transform @(...) expressions to @{ return ...; } blocks using .NET Regex balancing groups
+        // to correctly handle nested parentheses within the expression.
+        string policyExpressionPattern = @"@\((?<CapturedContent>([^()]|\((?<Depth>)|\)(?<-Depth>))*(?(Depth)(?!)))\)";
+        string policyExpressionReplacement = @"@{ return ${CapturedContent}; }";
+        contentToFormat = Regex.Replace(contentToFormat, policyExpressionPattern, policyExpressionReplacement);
+
+        // Assuming RazorCodeFormatter is accessible and can format an XML string.
+        // This uses the same formatter as the compilation path.
+        xmlOutputContent = RazorCodeFormatter.Format(contentToFormat);
+    }
+    else
+    {
+        Console.Out.WriteLine("Formatting option (--format) is not specified. XML content will be written as is.");
+    }
+
+    var outputFilePath = options.FormatOutputFile; // Assumes 'FormatOutputFile' property exists in CompilerOptions
+    if (string.IsNullOrEmpty(outputFilePath))
+    {
+        outputFilePath = options.FormatInputFile; // Default to overwrite the input file if no output file is specified
+        Console.Out.WriteLine($"No output file specified via --format-output-file. Input file '{options.FormatInputFile}' will be overwritten.");
+    }
+
+    var outputDirectoryPath = Path.GetDirectoryName(outputFilePath);
+    if (outputDirectoryPath is not null && !string.IsNullOrEmpty(outputDirectoryPath) && !Directory.Exists(outputDirectoryPath))
+    {
+        Directory.CreateDirectory(outputDirectoryPath);
+    }
+
+    File.WriteAllText(outputFilePath, xmlOutputContent);
+    Console.Out.WriteLine($"Formatted XML file written to '{outputFilePath}'");
+    return 0; // Success, exit program
+}
+// END - New XML Formatting Mode
+
 var files = Directory.GetFiles(options.SourceFolder, "*.cs", SearchOption.AllDirectories)
     .Where(p => !Regex.IsMatch(p, @".*[\\/](obj|bin)[\\/].*"));
 
